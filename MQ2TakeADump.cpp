@@ -74,14 +74,12 @@ Date		Author			Description
 Version 1.1.2
 ********************************************************************************************/
 
-#include "../MQ2Plugin.h"
-#include <time.h>  
+#include <mq/Plugin.h>
+#include <time.h>
+#include "fmt/format.h"
 
 PreSetup("MQ2TakeADump");
-
-//thanks mackal:
-#define tp_indexes *(DWORD *)Teleport_Table_Size
-#define pTeleportTable ((Ptp_coords)Teleport_Table)
+PLUGIN_VERSION(1.13);
 
 //passed to the dump functions to print a comma or new line 
 enum { TAD_NONE, TAD_COMMA, TAD_EOL };
@@ -115,7 +113,7 @@ BOOL fOpenDump(FILE **fOut, PCHAR szType)
 	strftime(szTime, sizeof(szTime), "%Y-%m-%d-%H-%M-%S", &newtime);
 
 	//create the Dumps directory
-	sprintf_s(szDir, MAX_STRING, "%s\\Dumps", gszINIPath);
+	sprintf_s(szDir, MAX_STRING, "%s\\ZoneDumps", gPathLogs);
 	CreateDirectory(szDir, NULL);
 
 	//open timestamped file for the dump output
@@ -163,7 +161,7 @@ VOID fOutDumpNUM(FILE *fOut, TNUM output, DWORD delimiter = TAD_COMMA)
 {
 	CHAR szOutput[MAX_STRING] = { 0 };
 
-	sprintf_s(szOutput, MAX_STRING, "%d", output);
+	fmt::format_to(szOutput, "{}", output);
 	fOutDump(fOut, szOutput, delimiter);
 }
 
@@ -177,7 +175,7 @@ VOID fOutDumpFLOAT(FILE *fOut, FLOAT output, DWORD delimiter = TAD_COMMA)
 }
 
 //formats chars for printing (adds quotes around it)
-VOID fOutDumpCHAR(FILE *fOut, PCHAR output, DWORD delimiter = TAD_COMMA)
+VOID fOutDumpCHAR(FILE *fOut, const char* output, DWORD delimiter = TAD_COMMA)
 {
 	CHAR szOutput[MAX_STRING] = { 0 };
 
@@ -223,7 +221,6 @@ VOID dumpDoor()
 	if (fOpenDump(&fOut, "Door"))
 	{
 		//headers
-		fOutDumpCHAR(fOut, "ObjType");
 		fOutDumpCHAR(fOut, "ID");
 		fOutDumpCHAR(fOut, "Name");
 		fOutDumpCHAR(fOut, "Type");
@@ -285,10 +282,11 @@ VOID dumpDoor()
 		fOutDumpCHAR(fOut, "bVisible");
 		fOutDumpCHAR(fOut, "bHeadingChanged");
 		fOutDumpCHAR(fOut, "bAllowCorpseDrag");
-		fOutDumpCHAR(fOut, "RealEstateDoorID", TAD_EOL); //end of line
+		fOutDumpCHAR(fOut, "RealEstateDoorID");
+		fOutDumpCHAR(fOut, "unknownFloat1");
+		fOutDumpCHAR(fOut, "unknownFloat2", TAD_EOL); //end of line
 
 														 //data types headers
-		fOutDumpCHAR(fOut, "BYTE");
 		fOutDumpCHAR(fOut, "BYTE");
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "BYTE");
@@ -350,14 +348,15 @@ VOID dumpDoor()
 		fOutDumpCHAR(fOut, "bool");
 		fOutDumpCHAR(fOut, "bool");
 		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "int", TAD_EOL); //end of line
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT", TAD_EOL); //end of line
 
 											//loop through the doors and dump their structure to a CSV
-		for (unsigned int i = 0; i < ((PDOORTABLE)pSwitchMgr)->NumEntries; i++)
+		for (int i = 0; i < pSwitchMgr->GetCount(); i++)
 		{
-			PDOOR pDoor = ((PDOORTABLE)pSwitchMgr)->pDoor[i];
+			PDOOR pDoor = pSwitchMgr->GetSwitch(i);
 
-			fOutDumpNUM(fOut, pDoor->ObjType);
 			fOutDumpNUM(fOut, pDoor->ID);
 			fOutDumpCHAR(fOut, pDoor->Name);
 			fOutDumpNUM(fOut, pDoor->Type);
@@ -419,7 +418,9 @@ VOID dumpDoor()
 			fOutDumpBOOL(fOut, pDoor->bVisible);
 			fOutDumpBOOL(fOut, pDoor->bHeadingChanged);
 			fOutDumpBOOL(fOut, pDoor->bAllowCorpseDrag);
-			fOutDumpNUM(fOut, pDoor->RealEstateDoorID, TAD_EOL); //end of line
+			fOutDumpNUM(fOut, pDoor->RealEstateDoorID);
+			fOutDumpFLOAT(fOut, pDoor->unknownFloat1);
+			fOutDumpFLOAT(fOut, pDoor->unknownFloat2, TAD_EOL);
 
 			//Struct Verification
 			// spot check a few data elements to see if we have any alignment issues
@@ -486,7 +487,7 @@ VOID dumpGroundItem()
 		fOutDumpCHAR(fOut, "int", TAD_EOL); //end of line
 
 		//loop through the grounditems and dump their structure to a CSV
-		PGROUNDITEM pItem = *(PGROUNDITEM*)pItemList;
+		EQGroundItem* pItem = pItemList->Top;
 		while (pItem)
 		{
 			//ground items have a weight
@@ -571,7 +572,7 @@ VOID dumpObjects()
 		fOutDumpCHAR(fOut, "int", TAD_EOL); //end of line
 
 		//loop through the objects and dump their structure to a CSV
-		PGROUNDITEM pItem = *(PGROUNDITEM*)pItemList;
+		EQGroundItem* pItem = pItemList->Top;
 		while (pItem)
 		{
 			//objects have a -1 weight
@@ -663,10 +664,8 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "PossiblyStuck /* never seen this be 1 so maybe it was used a a point but not now... */");
 		fOutDumpCHAR(fOut, "Type");
 		fOutDumpCHAR(fOut, "BodyType /* this really should be renamed to charprops or something its broken anyway*/");
-		for (int i = 0; i <= 11; i++)
-		{
-			fOutDumpCHAR(fOut, "CharPropFiller[0xc] /* well since the above is a CharacterPropertyHash we have to pad here...*/");
-		}
+		fOutDumpCHAR(fOut, "SpawnTyp");
+		fOutDumpCHAR(fOut, "CharacterPropertyHash");
 		fOutDumpCHAR(fOut, "AvatarHeight /* height of avatar from groundwhen standing*/");
 		fOutDumpCHAR(fOut, "Height");
 		fOutDumpCHAR(fOut, "Width");
@@ -690,6 +689,8 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "bFlingSnapToDest");
 		fOutDumpCHAR(fOut, "SplineID");
 		fOutDumpCHAR(fOut, "SplineRiderID");
+		fOutDumpCHAR(fOut, "LockID");
+		fOutDumpCHAR(fOut, "EncounterLockState");
 		fOutDumpCHAR(fOut, "ParticleCastStartTime");
 		fOutDumpCHAR(fOut, "ParticleCastDuration");
 		fOutDumpCHAR(fOut, "ParticleVisualSpellNum");
@@ -799,7 +800,7 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "PhysicsBeforeLastPort.AccelAngle");
 		fOutDumpCHAR(fOut, "PhysicsBeforeLastPort.SpeedHeading");
 		fOutDumpCHAR(fOut, "PhysicsBeforeLastPort.CameraAngle");
-		fOutDumpCHAR(fOut, "Filler0x1494");
+		fOutDumpCHAR(fOut, "notsure");
 		fOutDumpCHAR(fOut, "Fellowship.Version");
 		fOutDumpCHAR(fOut, "Fellowship.Version2//just place holders for now, ill fix these later");
 		fOutDumpCHAR(fOut, "Fellowship.Version3");
@@ -811,18 +812,18 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "Fellowship.Leader[0x40]");
 		fOutDumpCHAR(fOut, "Fellowship.MotD[0x400]");
 		fOutDumpCHAR(fOut, "Fellowship.Members");
-		for (int i = 0; i <= 11; i++)
+		for (int i = 0; i < MAX_FELLOWSHIP_MEMBERS; i++)
 		{
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].UniqueEntityID.UniqueEntityID");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].UniqueEntityID.WorldUniqueID");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].UniqueEntityID.Reserved");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].Name[0x40]");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].ZoneID");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].Level");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].Class");
-			fOutDumpCHAR(fOut, "Fellowship.FellowshipMember[i].LastOn// FastTime() timestamp");
-			fOutDumpCHAR(fOut, "Fellowship.bExpSharingEnabled[0xc]");
-			fOutDumpCHAR(fOut, "Fellowship.bSharedExpCapped[0xc]");
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].UniqueEntityID.UniqueEntityID", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].UniqueEntityID.WorldUniqueID", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].UniqueEntityID.Reserved", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].Name[0x40]", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].ZoneID", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].Level", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].Class", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.FellowshipMember[{}].LastOn// FastTime() timestamp", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.bExpSharingEnabled[{}]", i).c_str());
+			fOutDumpCHAR(fOut, fmt::format("Fellowship.bSharedExpCapped[{}]", i).c_str());
 		}
 		fOutDumpCHAR(fOut, "Fellowship.Sync");
 		fOutDumpCHAR(fOut, "CampfireY//see 585D7A in jul 9 2018 test");
@@ -898,8 +899,9 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "SoundIDs[7]//0x28 bytes");
 		fOutDumpCHAR(fOut, "SoundIDs[8]//0x28 bytes");
 		fOutDumpCHAR(fOut, "SoundIDs[9]//0x28 bytes");
-		fOutDumpCHAR(fOut, "LastHistorySentTime");
-		fOutDumpCHAR(fOut, "CurrentBardTwistIndex//see 63CB2A in jul 9 2018 test");
+		fOutDumpCHAR(fOut, "BardTwistSpells");
+		fOutDumpCHAR(fOut, "CurrentBardTwistIndex");
+		fOutDumpCHAR(fOut, "CurrentBardTwistIndex2");
 		fOutDumpCHAR(fOut, "SpawnStatus[0]//todo: look closer at these i think they can show like status of mobs slowed, mezzed etc, but not sure");
 		fOutDumpCHAR(fOut, "SpawnStatus[1]//todo: look closer at these i think they can show like status of mobs slowed, mezzed etc, but not sure");
 		fOutDumpCHAR(fOut, "SpawnStatus[2]//todo: look closer at these i think they can show like status of mobs slowed, mezzed etc, but not sure");
@@ -925,7 +927,7 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "mActorClient.HairStyle");
 		fOutDumpCHAR(fOut, "mActorClient.FacialHair");
 		fOutDumpCHAR(fOut, "mActorClient.Race");
-		fOutDumpCHAR(fOut, "mActorClient.Race2");
+		fOutDumpCHAR(fOut, "mActorClient.RaceOverride");
 		fOutDumpCHAR(fOut, "mActorClient.Class");
 		fOutDumpCHAR(fOut, "mActorClient.Gender");
 		fOutDumpCHAR(fOut, "mActorClient.ActorDef[0x40]");
@@ -942,9 +944,19 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "mActorClient.Heritage");
 		fOutDumpCHAR(fOut, "mActorClient.Tattoo");
 		fOutDumpCHAR(fOut, "mActorClient.Details");
-		fOutDumpCHAR(fOut, "GetClass()");
+		fOutDumpCHAR(fOut, "mActorClient.LeftEyeMaterialIndex");
+		fOutDumpCHAR(fOut, "mActorClient.RightEyeMaterialIndex");
+		fOutDumpCHAR(fOut, "mActorClient.bActiveTransition");
+		fOutDumpCHAR(fOut, "mActorClient.CurrentStage");
+		fOutDumpCHAR(fOut, "mActorClient.ZOffset");
+		fOutDumpCHAR(fOut, "mActorClient.AdjustedLoc.Y");
+		fOutDumpCHAR(fOut, "mActorClient.AdjustedLoc.X");
+		fOutDumpCHAR(fOut, "mActorClient.AdjustedLoc.Z");
+		fOutDumpCHAR(fOut, "mActorClient.bReplacedStaticObject");
+		fOutDumpCHAR(fOut, "mActorClient.PartialFaceNumber");
+		fOutDumpCHAR(fOut, "mActorClient.bNewArmorDisabled");
+		fOutDumpCHAR(fOut, "GetClassString()");
 		fOutDumpCHAR(fOut, "GetId()");
-		fOutDumpCHAR(fOut, "LastCastNum");
 		fOutDumpCHAR(fOut, "RunSpeed");
 		fOutDumpCHAR(fOut, "HPMax");
 		fOutDumpCHAR(fOut, "CharClass");
@@ -995,10 +1007,8 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "BYTE");
 		fOutDumpCHAR(fOut, "BYTE");
 		fOutDumpCHAR(fOut, "DWORD");
-		for (int i = 0; i <= 11; i++)
-		{
-			fOutDumpCHAR(fOut, "BYTE");
-		}
+		fOutDumpCHAR(fOut, "DWORD");
+		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "FLOAT");
@@ -1022,6 +1032,8 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "bool");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "uint64_t");
+		fOutDumpCHAR(fOut, "uint32_t");
 		fOutDumpCHAR(fOut, "UINT");
 		fOutDumpCHAR(fOut, "UINT");
 		fOutDumpCHAR(fOut, "int");
@@ -1143,7 +1155,7 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "DWORD");
-		for (int i = 0; i <= 11; i++)
+		for (int i = 0; i < MAX_FELLOWSHIP_MEMBERS; i++)
 		{
 			fOutDumpCHAR(fOut, "UINT");
 			fOutDumpCHAR(fOut, "WORD");
@@ -1230,8 +1242,9 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "UINT");
-		fOutDumpCHAR(fOut, "__int64");
+		fOutDumpCHAR(fOut, "CHAR");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
@@ -1276,6 +1289,16 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "UINT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "__int64");
@@ -1290,7 +1313,7 @@ VOID dumpNPCType()
 		fOutDumpCHAR(fOut, "BYTE", TAD_EOL); //end of line
 
 		//loop through the npcs and dump their structure to a CSV
-		PSPAWNINFO pSpawn = (PSPAWNINFO)pSpawnList;
+		PlayerClient* pSpawn = pSpawnList;
 		while (pSpawn)
 		{
 			fOutDumpFLOAT(fOut, pSpawn->JumpStrength);
@@ -1329,20 +1352,22 @@ VOID dumpNPCType()
 			fOutDumpCHAR(fOut, pSpawn->DisplayedName);
 			fOutDumpNUM(fOut, pSpawn->PossiblyStuck);
 			fOutDumpNUM(fOut, pSpawn->Type);
-			fOutDumpNUM(fOut, (DWORD)*pSpawn->BodyType);
-			for (int i = 0; i <= 11; i++)
-			{
-				fOutDumpNUM(fOut, pSpawn->CharPropFiller[i]);
-			}
+			fOutDumpNUM(fOut, GetBodyType(pSpawn)); // specialize body type because it's known useful
+			fOutDumpNUM(fOut, static_cast<uint32_t>(GetSpawnType(pSpawn)));
+			std::vector<int> properties;
+			properties.reserve(pSpawn->Properties.size());
+			for (auto prop_it = pSpawn->Properties.begin(); prop_it != pSpawn->Properties.end(); ++prop_it)
+				properties.push_back(prop_it->first);
+			fOutDumpCHAR(fOut, fmt::format("{}", fmt::join(properties, "|")).c_str());
 			fOutDumpFLOAT(fOut, pSpawn->AvatarHeight);
 			fOutDumpFLOAT(fOut, pSpawn->Height);
 			fOutDumpFLOAT(fOut, pSpawn->Width);
 			fOutDumpFLOAT(fOut, pSpawn->Length);
 			fOutDumpNUM(fOut, pSpawn->SpawnID);
 			fOutDumpNUM(fOut, pSpawn->PlayerState);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->Vehicle);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->Mount);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->Rider);
+			fOutDumpNUM(fOut, pSpawn->Vehicle->SpawnID);
+			fOutDumpNUM(fOut, pSpawn->Mount->SpawnID);
+			fOutDumpNUM(fOut, pSpawn->Rider->SpawnID);
 			fOutDumpNUM(fOut, pSpawn->Unknown0x0164);
 			fOutDumpBOOL(fOut, pSpawn->Targetable);
 			fOutDumpBOOL(fOut, pSpawn->bTargetCyclable);
@@ -1357,6 +1382,8 @@ VOID dumpNPCType()
 			fOutDumpBOOL(fOut, pSpawn->bFlingSnapToDest);
 			fOutDumpNUM(fOut, pSpawn->SplineID);
 			fOutDumpNUM(fOut, pSpawn->SplineRiderID);
+			fOutDumpNUM(fOut, pSpawn->LockID);
+			fOutDumpNUM(fOut, pSpawn->EncounterLockState);
 			fOutDumpNUM(fOut, pSpawn->ParticleCastStartTime);
 			fOutDumpNUM(fOut, pSpawn->ParticleCastDuration);
 			fOutDumpNUM(fOut, pSpawn->ParticleVisualSpellNum);
@@ -1466,7 +1493,7 @@ VOID dumpNPCType()
 			fOutDumpFLOAT(fOut, pSpawn->PhysicsBeforeLastPort.AccelAngle);
 			fOutDumpFLOAT(fOut, pSpawn->PhysicsBeforeLastPort.SpeedHeading);
 			fOutDumpFLOAT(fOut, pSpawn->PhysicsBeforeLastPort.CameraAngle);
-			fOutDumpNUM(fOut, pSpawn->Filler0x1494);
+			fOutDumpNUM(fOut, pSpawn->notsure);
 			fOutDumpNUM(fOut, pSpawn->Fellowship.Version);
 			fOutDumpNUM(fOut, pSpawn->Fellowship.Version2);
 			fOutDumpNUM(fOut, pSpawn->Fellowship.Version3);
@@ -1475,10 +1502,10 @@ VOID dumpNPCType()
 			fOutDumpNUM(fOut, pSpawn->Fellowship.FellowshipGUID.UniqueEntityID);
 			fOutDumpNUM(fOut, pSpawn->Fellowship.FellowshipGUID.WorldUniqueID);
 			fOutDumpNUM(fOut, pSpawn->Fellowship.FellowshipGUID.Reserved);
-			fOutDumpCHAR(fOut, (PCHAR)(pSpawn->Fellowship.Leader));
+			fOutDumpCHAR(fOut, pSpawn->Fellowship.Leader);
 			fOutDumpCHAR(fOut, pSpawn->Fellowship.MotD);
 			fOutDumpNUM(fOut, pSpawn->Fellowship.Members);
-			for (int i = 0; i <= 11; i++)
+			for (int i = 0; i < MAX_FELLOWSHIP_MEMBERS; i++)
 			{
 				fOutDumpNUM(fOut, pSpawn->Fellowship.FellowshipMember[i].UniqueEntityID.UniqueEntityID);
 				fOutDumpNUM(fOut, pSpawn->Fellowship.FellowshipMember[i].UniqueEntityID.WorldUniqueID);
@@ -1565,8 +1592,13 @@ VOID dumpNPCType()
 			fOutDumpNUM(fOut, pSpawn->SoundIDs[7]);
 			fOutDumpNUM(fOut, pSpawn->SoundIDs[8]);
 			fOutDumpNUM(fOut, pSpawn->SoundIDs[9]);
-			fOutDumpNUM(fOut, pSpawn->LastHistorySentTime);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->CurrentBardTwistIndex);
+			std::vector<unsigned int> twist;
+			twist.reserve(pSpawn->BardTwistSpells.size());
+			for (auto twist_it = pSpawn->BardTwistSpells.begin(); twist_it != pSpawn->BardTwistSpells.end(); ++twist_it)
+				twist.push_back(*twist_it);
+			fOutDumpCHAR(fOut, fmt::format("{}", fmt::join(twist, "|")).c_str());
+			fOutDumpNUM(fOut, pSpawn->CurrentBardTwistIndex);
+			fOutDumpNUM(fOut, pSpawn->CurrentBardTwistIndex2);
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[0]);
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[1]);
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[2]);
@@ -1575,8 +1607,8 @@ VOID dumpNPCType()
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[5]);
 			fOutDumpNUM(fOut, pSpawn->BannerIndex0);
 			fOutDumpNUM(fOut, pSpawn->BannerIndex1);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->BannerTint0.ARGB);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->BannerTint1.ARGB);
+			fOutDumpNUM(fOut, pSpawn->BannerTint0.ARGB);
+			fOutDumpNUM(fOut, pSpawn->BannerTint1.ARGB);
 			fOutDumpNUM(fOut, pSpawn->MountAnimationRelated);
 			fOutDumpBOOL(fOut, pSpawn->bGuildShowAnim);
 			fOutDumpBOOL(fOut, pSpawn->bWaitingForPort);
@@ -1592,7 +1624,7 @@ VOID dumpNPCType()
 			fOutDumpNUM(fOut, pSpawn->mActorClient.HairStyle);
 			fOutDumpNUM(fOut, pSpawn->mActorClient.FacialHair);
 			fOutDumpNUM(fOut, pSpawn->mActorClient.Race);
-			fOutDumpNUM(fOut, pSpawn->mActorClient.Race2);
+			fOutDumpNUM(fOut, pSpawn->mActorClient.RaceOverride);
 			fOutDumpNUM(fOut, pSpawn->mActorClient.Class);
 			fOutDumpNUM(fOut, pSpawn->mActorClient.Gender);
 			fOutDumpCHAR(fOut, pSpawn->mActorClient.ActorDef);
@@ -1609,11 +1641,21 @@ VOID dumpNPCType()
 			fOutDumpNUM(fOut, pSpawn->mActorClient.Heritage);
 			fOutDumpNUM(fOut, pSpawn->mActorClient.Tattoo);
 			fOutDumpNUM(fOut, pSpawn->mActorClient.Details);
-			fOutDumpNUM(fOut, pSpawn->GetClass());
+			fOutDumpNUM(fOut, pSpawn->mActorClient.LeftEyeMaterialIndex);
+			fOutDumpNUM(fOut, pSpawn->mActorClient.RightEyeMaterialIndex);
+			fOutDumpBOOL(fOut, pSpawn->mActorClient.bActiveTransition);
+			fOutDumpNUM(fOut, pSpawn->mActorClient.CurrentStage);
+			fOutDumpFLOAT(fOut, pSpawn->mActorClient.ZOffset);
+			fOutDumpFLOAT(fOut, pSpawn->mActorClient.AdjustedLoc.Y);
+			fOutDumpFLOAT(fOut, pSpawn->mActorClient.AdjustedLoc.X);
+			fOutDumpFLOAT(fOut, pSpawn->mActorClient.AdjustedLoc.Z);
+			fOutDumpBOOL(fOut, pSpawn->mActorClient.bReplacedStaticObject);
+			fOutDumpNUM(fOut, pSpawn->mActorClient.PartialFaceNumber);
+			fOutDumpBOOL(fOut, pSpawn->mActorClient.bNewArmorDisabled);
+			fOutDumpCHAR(fOut, pSpawn->GetClassString());
 			fOutDumpNUM(fOut, pSpawn->GetId());
-			fOutDumpNUM(fOut, pSpawn->LastCastNum);
 			fOutDumpFLOAT(fOut, pSpawn->RunSpeed);
-			fOutDumpNUM(fOut, (DWORD)pSpawn->HPMax);
+			fOutDumpNUM(fOut, pSpawn->HPMax);
 			fOutDumpNUM(fOut, pSpawn->CharClass);
 			fOutDumpNUM(fOut, pSpawn->WarCry);
 			fOutDumpNUM(fOut, pSpawn->Deity);
@@ -1658,32 +1700,43 @@ VOID dumpZone()
 	if (fOpenDump(&fOut, "Zone"))
 	{
 		//headers
-		fOutDumpCHAR(fOut, "CharacterName[0x40]");
-		fOutDumpCHAR(fOut, "ShortName[0x80]");
-		fOutDumpCHAR(fOut, "LongName[0x80]");
-		fOutDumpCHAR(fOut, "ZoneDesc[0][0x1e]  //zone description strings");
-		fOutDumpCHAR(fOut, "ZoneDesc[1][0x1e]  //zone description strings");
-		fOutDumpCHAR(fOut, "ZoneDesc[2][0x1e]  //zone description strings");
-		fOutDumpCHAR(fOut, "ZoneDesc[3][0x1e]  //zone description strings");
-		fOutDumpCHAR(fOut, "ZoneDesc[4][0x1e]  //zone description strings");
-		fOutDumpCHAR(fOut, "FogOnOff  // (usually FF)");
-		fOutDumpCHAR(fOut, "FogRed");
-		fOutDumpCHAR(fOut, "FogGreen");
-		fOutDumpCHAR(fOut, "FogBlue");
-		fOutDumpCHAR(fOut, "FogStart[0]  //fog distance");
-		fOutDumpCHAR(fOut, "FogStart[1]  //fog distance");
-		fOutDumpCHAR(fOut, "FogStart[2]  //fog distance");
-		fOutDumpCHAR(fOut, "FogStart[3]  //fog distance");
+		fOutDumpCHAR(fOut, "ShortName");
+		fOutDumpCHAR(fOut, "LongName");
+		fOutDumpCHAR(fOut, "WeatherType");
+		fOutDumpCHAR(fOut, "WeatherTypeOverride");
+		fOutDumpCHAR(fOut, "SkyType");
+		fOutDumpCHAR(fOut, "SkyTypeOverride");
+		fOutDumpCHAR(fOut, "ZoneType");
+		fOutDumpCHAR(fOut, "ZoneID");
+		fOutDumpCHAR(fOut, "ZoneExpModifier");
+		fOutDumpCHAR(fOut, "GroupLvlExpRelated");
+		fOutDumpCHAR(fOut, "FilterID");
+		fOutDumpCHAR(fOut, "Unknown1");
+		fOutDumpCHAR(fOut, "FogDensity");
+		fOutDumpCHAR(fOut, "FogStart[0]");
+		fOutDumpCHAR(fOut, "FogStart[1]");
+		fOutDumpCHAR(fOut, "FogStart[2]");
+		fOutDumpCHAR(fOut, "FogStart[3]");
 		fOutDumpCHAR(fOut, "FogEnd[0]");
 		fOutDumpCHAR(fOut, "FogEnd[1]");
 		fOutDumpCHAR(fOut, "FogEnd[2]");
 		fOutDumpCHAR(fOut, "FogEnd[3]");
-		fOutDumpCHAR(fOut, "ZoneGravity");
-		fOutDumpCHAR(fOut, "OutDoor //this is what we want instead of ZoneType, 	IndoorDungeon,		// Zones without sky SolB for example.	Outdoor:Zones with sky like Commonlands for example.	OutdoorCity:A Player City with sky Plane of Knowledge for example.	DungeonCity:A Player City without sky Ak'anon for example.	IndoorCity:A Player City without sky Erudin for example.	OutdoorDungeon:Dungeons with sky like Blackburrow for example.");
-		fOutDumpCHAR(fOut, "RainChance[0] //no u cant change these to dwords cause then u screw up 4 padding");
-		fOutDumpCHAR(fOut, "RainChance[1] //no u cant change these to dwords cause then u screw up 4 padding");
-		fOutDumpCHAR(fOut, "RainChance[2] //no u cant change these to dwords cause then u screw up 4 padding");
-		fOutDumpCHAR(fOut, "RainChance[3] //no u cant change these to dwords cause then u screw up 4 padding");
+		fOutDumpCHAR(fOut, "FogRed[0]");
+		fOutDumpCHAR(fOut, "FogRed[1]");
+		fOutDumpCHAR(fOut, "FogRed[2]");
+		fOutDumpCHAR(fOut, "FogRed[3]");
+		fOutDumpCHAR(fOut, "FogGreen[0]");
+		fOutDumpCHAR(fOut, "FogGreen[1]");
+		fOutDumpCHAR(fOut, "FogGreen[2]");
+		fOutDumpCHAR(fOut, "FogGreen[3]");
+		fOutDumpCHAR(fOut, "FogBlue[0]");
+		fOutDumpCHAR(fOut, "FogBlue[1]");
+		fOutDumpCHAR(fOut, "FogBlue[2]");
+		fOutDumpCHAR(fOut, "FogBlue[3]");
+		fOutDumpCHAR(fOut, "RainChance[0]");
+		fOutDumpCHAR(fOut, "RainChance[1]");
+		fOutDumpCHAR(fOut, "RainChance[2]");
+		fOutDumpCHAR(fOut, "RainChance[3]");
 		fOutDumpCHAR(fOut, "RainDuration[0]");
 		fOutDumpCHAR(fOut, "RainDuration[1]");
 		fOutDumpCHAR(fOut, "RainDuration[2]");
@@ -1696,28 +1749,25 @@ VOID dumpZone()
 		fOutDumpCHAR(fOut, "SnowDuration[1]");
 		fOutDumpCHAR(fOut, "SnowDuration[2]");
 		fOutDumpCHAR(fOut, "SnowDuration[3]");
-		fOutDumpCHAR(fOut, "ZoneTimeZone  //in hours from worldserver, can be negative");
-		fOutDumpCHAR(fOut, "SkyType  //1 means active");
-		fOutDumpCHAR(fOut, "WaterMidi  //which midi to play while underwater");
-		fOutDumpCHAR(fOut, "DayMidi");
-		fOutDumpCHAR(fOut, "NightMidi");
-		fOutDumpCHAR(fOut, "ZoneExpModifier  //This has been nerfed ..now reads 1.0 for all zones");
-		fOutDumpCHAR(fOut, "SafeXLoc");
+		fOutDumpCHAR(fOut, "PrecipitationType");
+		fOutDumpCHAR(fOut, "BloomIntensity");
+		fOutDumpCHAR(fOut, "ZoneGravity");
+		fOutDumpCHAR(fOut, "LavaDamage");
+		fOutDumpCHAR(fOut, "MinLavaDamage");
+		fOutDumpCHAR(fOut, "TimeStringID");
+		fOutDumpCHAR(fOut, "Unknown3");
+		fOutDumpCHAR(fOut, "SkyLock");
+		fOutDumpCHAR(fOut, "SkyLockOverride");
 		fOutDumpCHAR(fOut, "SafeYLoc");
+		fOutDumpCHAR(fOut, "SafeXLoc");
 		fOutDumpCHAR(fOut, "SafeZLoc");
 		fOutDumpCHAR(fOut, "SafeHeading");
 		fOutDumpCHAR(fOut, "Ceiling");
 		fOutDumpCHAR(fOut, "Floor");
 		fOutDumpCHAR(fOut, "MinClip");
 		fOutDumpCHAR(fOut, "MaxClip");
-		fOutDumpCHAR(fOut, "ForageLow  //Forage skill level needed to get stuff");
-		fOutDumpCHAR(fOut, "ForageMedium");
-		fOutDumpCHAR(fOut, "ForageHigh");
-		fOutDumpCHAR(fOut, "FishingLow  //Fishing skill level needed to get stuff");
-		fOutDumpCHAR(fOut, "FishingMedium");
-		fOutDumpCHAR(fOut, "FishingHigh");
-		fOutDumpCHAR(fOut, "SkyRelated  //0-24 i think");
-		fOutDumpCHAR(fOut, "UGraveyardTimer  //minutes until corpse(s) pops to graveyard");
+		fOutDumpCHAR(fOut, "FallThroughWorldTeleportID");
+		fOutDumpCHAR(fOut, "Unknown4");
 		fOutDumpCHAR(fOut, "ScriptIDHour");
 		fOutDumpCHAR(fOut, "ScriptIDMinute");
 		fOutDumpCHAR(fOut, "ScriptIDTick");
@@ -1726,95 +1776,57 @@ VOID dumpZone()
 		fOutDumpCHAR(fOut, "ScriptIDPlayerEnteringZone");
 		fOutDumpCHAR(fOut, "ScriptIDOnZonePop");
 		fOutDumpCHAR(fOut, "ScriptIDNPCLoot");
-		fOutDumpCHAR(fOut, "ScriptIDAdventureFailed");
-		fOutDumpCHAR(fOut, "CanExploreTasks");
-		fOutDumpCHAR(fOut, "UnknownFlag");
+		fOutDumpCHAR(fOut, "Unknown4b");
 		fOutDumpCHAR(fOut, "ScriptIDOnFishing");
 		fOutDumpCHAR(fOut, "ScriptIDOnForage");
-		fOutDumpCHAR(fOut, "SkyString[0x20]  //if empty no sky, ive only seen this as the zone name");
-		fOutDumpCHAR(fOut, "WeatherString[0x20]  //if empty no weather");
-		fOutDumpCHAR(fOut, "SkyString2[0x20]  //if SkyString is empty this is checked");
-		fOutDumpCHAR(fOut, "SkyRelated2  //0-24");
-		fOutDumpCHAR(fOut, "WeatherString2[0x20]  //if empty no weather");
-		fOutDumpCHAR(fOut, "WeatherChangeTime");
-		fOutDumpCHAR(fOut, "Climate");
-		fOutDumpCHAR(fOut, "NPCAgroMaxDist  //the distance needed for an npc to lose agro after an attack");
-		fOutDumpCHAR(fOut, "FilterID  //found in the teleport table");
-		fOutDumpCHAR(fOut, "ZoneID");
-		fOutDumpCHAR(fOut, "ScriptNPCReceivedanItem");
-		fOutDumpCHAR(fOut, "bCheck");
-		fOutDumpCHAR(fOut, "ScriptIDSomething");
-		fOutDumpCHAR(fOut, "ScriptIDSomething2");
-		fOutDumpCHAR(fOut, "ScriptIDSomething3");
-		fOutDumpCHAR(fOut, "bNoBuffExpiration //this is checked serverside so no, u cant and shouldn't set this if u value your account");
-		fOutDumpCHAR(fOut, "LavaDamage  //before resists");
-		fOutDumpCHAR(fOut, "MinLavaDamage  //after resists");
-		fOutDumpCHAR(fOut, "bDisallowManaStone  //can a manastone be used here?");
-		fOutDumpCHAR(fOut, "bNoBind");
-		fOutDumpCHAR(fOut, "bNoAttack");
-		fOutDumpCHAR(fOut, "bNoCallOfHero");
-		fOutDumpCHAR(fOut, "bNoFlux");
-		fOutDumpCHAR(fOut, "bNoFear");
-		fOutDumpCHAR(fOut, "bNoEncumber");
-		fOutDumpCHAR(fOut, "FastRegenHP //not exactly sure how these work but ome zones have these set");
+		fOutDumpCHAR(fOut, "Unknown4c");
+		fOutDumpCHAR(fOut, "NPCAgroMaxDist");
+		fOutDumpCHAR(fOut, "ForageLow");
+		fOutDumpCHAR(fOut, "ForageMedium");
+		fOutDumpCHAR(fOut, "ForageHigh");
+		fOutDumpCHAR(fOut, "ForageSpecial");
+		fOutDumpCHAR(fOut, "FishingLow");
+		fOutDumpCHAR(fOut, "FishingMedium");
+		fOutDumpCHAR(fOut, "FishingHigh");
+		fOutDumpCHAR(fOut, "FishingRelated");
+		fOutDumpCHAR(fOut, "CanPlaceCampsite");
+		fOutDumpCHAR(fOut, "CanPlaceGuildBanner");
+		fOutDumpCHAR(fOut, "Unknown4d");
+		fOutDumpCHAR(fOut, "FastRegenHP");
 		fOutDumpCHAR(fOut, "FastRegenMana");
 		fOutDumpCHAR(fOut, "FastRegenEndurance");
-		fOutDumpCHAR(fOut, "CanPlaceCampsite  //CannotPlace, CanOnlyPlace, CanPlaceAndGoto");
-		fOutDumpCHAR(fOut, "CanPlaceGuildBanner  //CannotPlace, CanOnlyPlace, CanPlaceAndGoto");
-		fOutDumpCHAR(fOut, "FogDensity");
-		fOutDumpCHAR(fOut, "bAdjustGamma");
-		fOutDumpCHAR(fOut, "TimeStringID");
-		fOutDumpCHAR(fOut, "bNoMercenaries");
-		fOutDumpCHAR(fOut, "FishingRelated");
-		fOutDumpCHAR(fOut, "ForageRelated");
-		fOutDumpCHAR(fOut, "bNoLevitate");
-		fOutDumpCHAR(fOut, "Blooming");
+		fOutDumpCHAR(fOut, "NewEngineZone");
+		fOutDumpCHAR(fOut, "SkyEnabled");
+		fOutDumpCHAR(fOut, "FogOnOff");
+		fOutDumpCHAR(fOut, "ClimateType");
 		fOutDumpCHAR(fOut, "bNoPlayerLight");
-		fOutDumpCHAR(fOut, "GroupLvlExpRelated");
-		fOutDumpCHAR(fOut, "PrecipitationType");
-		fOutDumpCHAR(fOut, "bAllowPVP ", TAD_EOL); //end of line
+		fOutDumpCHAR(fOut, "bUnknown5");
+		fOutDumpCHAR(fOut, "bNoAttack");
+		fOutDumpCHAR(fOut, "bAllowPVP");
+		fOutDumpCHAR(fOut, "bNoEncumber");
+		fOutDumpCHAR(fOut, "bUnknowns6[0]");
+		fOutDumpCHAR(fOut, "bUnknowns6[1]");
+		fOutDumpCHAR(fOut, "bUnknowns6[2]");
+		fOutDumpCHAR(fOut, "bNoLevitate");
+		fOutDumpCHAR(fOut, "bNoBuffExpiration");
+		fOutDumpCHAR(fOut, "bDisallowManaStone");
+		fOutDumpCHAR(fOut, "bNoBind");
+		fOutDumpCHAR(fOut, "bNoCallOfTheHero");
+		fOutDumpCHAR(fOut, "bUnknown8");
+		fOutDumpCHAR(fOut, "bNoFear");
+		fOutDumpCHAR(fOut, "bUnknown9, TAD_EOL"); // end of line
 
-												   //data types
+                                                  //data types
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "CHAR");
 		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "ARGBCOLOR");
-		fOutDumpCHAR(fOut, "ARGBCOLOR");
-		fOutDumpCHAR(fOut, "ARGBCOLOR");
+		fOutDumpCHAR(fOut, "UINT");
+		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "DWORD");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "char");
-		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
@@ -1826,7 +1838,67 @@ VOID dumpZone()
 		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
+		fOutDumpCHAR(fOut, "BYTE");
 		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "FLOAT");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
+		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
@@ -1835,35 +1907,9 @@ VOID dumpZone()
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "UINT");
+		fOutDumpCHAR(fOut, "UINT");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "CHAR");
-		fOutDumpCHAR(fOut, "FLOAT");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "bool");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "bool");
@@ -1873,152 +1919,140 @@ VOID dumpZone()
 		fOutDumpCHAR(fOut, "bool");
 		fOutDumpCHAR(fOut, "bool");
 		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "DWORD");
-		fOutDumpCHAR(fOut, "DWORD");
-		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "int");
 		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "FLOAT");
 		fOutDumpCHAR(fOut, "bool");
-		fOutDumpCHAR(fOut, "int");
-		fOutDumpCHAR(fOut, "BYTE");
-		fOutDumpCHAR(fOut, "bool", TAD_EOL); //end of line
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool");
+		fOutDumpCHAR(fOut, "bool", TAD_EOL); // end of line
 
-		PZONEINFO pZone = (PZONEINFO)pZoneInfo;
-
-		fOutDumpCHAR(fOut, pZone->CharacterName);
-		fOutDumpCHAR(fOut, pZone->ShortName);
-		fOutDumpCHAR(fOut, pZone->LongName);
-		fOutDumpCHAR(fOut, pZone->ZoneDesc[0]);
-		fOutDumpCHAR(fOut, pZone->ZoneDesc[1]);
-		fOutDumpCHAR(fOut, pZone->ZoneDesc[2]);
-		fOutDumpCHAR(fOut, pZone->ZoneDesc[3]);
-		fOutDumpCHAR(fOut, pZone->ZoneDesc[4]);
-		fOutDumpNUM(fOut, pZone->FogOnOff);
-		fOutDumpNUM(fOut, (DWORD)pZone->FogRed.ARGB);
-		fOutDumpNUM(fOut, (DWORD)pZone->FogGreen.ARGB);
-		fOutDumpNUM(fOut, (DWORD)pZone->FogBlue.ARGB);
-		fOutDumpFLOAT(fOut, pZone->FogStart[0]);
-		fOutDumpFLOAT(fOut, pZone->FogStart[1]);
-		fOutDumpFLOAT(fOut, pZone->FogStart[2]);
-		fOutDumpFLOAT(fOut, pZone->FogStart[3]);
-		fOutDumpFLOAT(fOut, pZone->FogEnd[0]);
-		fOutDumpFLOAT(fOut, pZone->FogEnd[1]);
-		fOutDumpFLOAT(fOut, pZone->FogEnd[2]);
-		fOutDumpFLOAT(fOut, pZone->FogEnd[3]);
-		fOutDumpFLOAT(fOut, pZone->ZoneGravity);
-		fOutDumpNUM(fOut, (DWORD)pZone->OutDoor);
-		fOutDumpNUM(fOut, pZone->RainChance[0]);
-		fOutDumpNUM(fOut, pZone->RainChance[1]);
-		fOutDumpNUM(fOut, pZone->RainChance[2]);
-		fOutDumpNUM(fOut, pZone->RainChance[3]);
-		fOutDumpNUM(fOut, pZone->RainDuration[0]);
-		fOutDumpNUM(fOut, pZone->RainDuration[1]);
-		fOutDumpNUM(fOut, pZone->RainDuration[2]);
-		fOutDumpNUM(fOut, pZone->RainDuration[3]);
-		fOutDumpNUM(fOut, pZone->SnowChance[0]);
-		fOutDumpNUM(fOut, pZone->SnowChance[1]);
-		fOutDumpNUM(fOut, pZone->SnowChance[2]);
-		fOutDumpNUM(fOut, pZone->SnowChance[3]);
-		fOutDumpNUM(fOut, pZone->SnowDuration[0]);
-		fOutDumpNUM(fOut, pZone->SnowDuration[1]);
-		fOutDumpNUM(fOut, pZone->SnowDuration[2]);
-		fOutDumpNUM(fOut, pZone->SnowDuration[3]);
-		fOutDumpNUM(fOut, (BYTE)pZone->ZoneTimeZone);
-		fOutDumpNUM(fOut, pZone->SkyType);
-		fOutDumpNUM(fOut, pZone->WaterMidi);
-		fOutDumpNUM(fOut, pZone->DayMidi);
-		fOutDumpNUM(fOut, pZone->NightMidi);
-		fOutDumpFLOAT(fOut, pZone->ZoneExpModifier);
-		//there is a naming collision with a constant so we use the 
-		//reference of the previous float with an offset added
-		//nasty but it gets us there
-#undef SafeXLoc
-#undef SafeYLoc
-#undef SafeZLoc
-		fOutDumpFLOAT(fOut, pZone->SafeXLoc);
-		fOutDumpFLOAT(fOut, pZone->SafeYLoc);
-		fOutDumpFLOAT(fOut, pZone->SafeZLoc);
-		fOutDumpFLOAT(fOut, pZone->SafeHeading);
-		fOutDumpFLOAT(fOut, pZone->Ceiling);
-		fOutDumpFLOAT(fOut, pZone->Floor);
-		fOutDumpFLOAT(fOut, pZone->MinClip);
-		fOutDumpFLOAT(fOut, pZone->MaxClip);
-		fOutDumpNUM(fOut, pZone->ForageLow);
-		fOutDumpNUM(fOut, pZone->ForageMedium);
-		fOutDumpNUM(fOut, pZone->ForageHigh);
-		fOutDumpNUM(fOut, pZone->FishingLow);
-		fOutDumpNUM(fOut, pZone->FishingMedium);
-		fOutDumpNUM(fOut, pZone->FishingHigh);
-		fOutDumpNUM(fOut, pZone->SkyRelated);
-		fOutDumpNUM(fOut, pZone->GraveyardTimer);
-		fOutDumpNUM(fOut, pZone->ScriptIDHour);
-		fOutDumpNUM(fOut, pZone->ScriptIDMinute);
-		fOutDumpNUM(fOut, pZone->ScriptIDTick);
-		fOutDumpNUM(fOut, pZone->ScriptIDOnPlayerDeath);
-		fOutDumpNUM(fOut, pZone->ScriptIDOnNPCDeath);
-		fOutDumpNUM(fOut, pZone->ScriptIDPlayerEnteringZone);
-		fOutDumpNUM(fOut, pZone->ScriptIDOnZonePop);
-		fOutDumpNUM(fOut, pZone->ScriptIDNPCLoot);
-		fOutDumpNUM(fOut, pZone->ScriptIDAdventureFailed);
-		fOutDumpNUM(fOut, pZone->CanExploreTasks);
-		fOutDumpNUM(fOut, pZone->UnknownFlag);
-		fOutDumpNUM(fOut, pZone->ScriptIDOnFishing);
-		fOutDumpNUM(fOut, pZone->ScriptIDOnForage);
-		fOutDumpCHAR(fOut, pZone->SkyString);
-		fOutDumpCHAR(fOut, pZone->WeatherString);
-		fOutDumpCHAR(fOut, pZone->SkyString2);
-		fOutDumpNUM(fOut, pZone->SkyRelated2);
-		fOutDumpCHAR(fOut, pZone->WeatherString2);
-		fOutDumpFLOAT(fOut, pZone->WeatherChangeTime);
-		fOutDumpNUM(fOut, pZone->Climate);
-		fOutDumpNUM(fOut, pZone->NPCAgroMaxDist);
-		fOutDumpNUM(fOut, pZone->FilterID);
-		fOutDumpNUM(fOut, pZone->ZoneID);
-		fOutDumpNUM(fOut, pZone->ScriptNPCReceivedanItem);
-		fOutDumpBOOL(fOut, pZone->bCheck);
-		fOutDumpNUM(fOut, pZone->ScriptIDSomething);
-		fOutDumpNUM(fOut, pZone->ScriptIDSomething2);
-		fOutDumpNUM(fOut, pZone->ScriptIDSomething3);
-		fOutDumpBOOL(fOut, pZone->bNoBuffExpiration);
-		fOutDumpNUM(fOut, pZone->LavaDamage);
-		fOutDumpNUM(fOut, pZone->MinLavaDamage);
-		fOutDumpBOOL(fOut, pZone->bDisallowManaStone);
-		fOutDumpBOOL(fOut, pZone->bNoBind);
-		fOutDumpBOOL(fOut, pZone->bNoAttack);
-		fOutDumpBOOL(fOut, pZone->bNoCallOfHero);
-		fOutDumpBOOL(fOut, pZone->bNoFlux);
-		fOutDumpBOOL(fOut, pZone->bNoFear);
-		fOutDumpBOOL(fOut, pZone->bNoEncumber);
-		fOutDumpNUM(fOut, pZone->FastRegenHP);
-		fOutDumpNUM(fOut, pZone->FastRegenMana);
-		fOutDumpNUM(fOut, pZone->FastRegenEndurance);
-		fOutDumpNUM(fOut, (DWORD)pZone->CanPlaceCampsite);
-		fOutDumpNUM(fOut, (DWORD)pZone->CanPlaceGuildBanner);
-		fOutDumpFLOAT(fOut, pZone->FogDensity);
-		fOutDumpBOOL(fOut, pZone->bAdjustGamma);
-		fOutDumpNUM(fOut, pZone->TimeStringID);
-		fOutDumpBOOL(fOut, pZone->bNoMercenaries);
-		fOutDumpNUM(fOut, pZone->FishingRelated);
-		fOutDumpNUM(fOut, pZone->ForageRelated);
-		fOutDumpBOOL(fOut, pZone->bNoLevitate);
-		fOutDumpFLOAT(fOut, pZone->Blooming);
-		fOutDumpBOOL(fOut, pZone->bNoPlayerLight);
-		fOutDumpNUM(fOut, pZone->GroupLvlExpRelated);
-		fOutDumpNUM(fOut, pZone->PrecipitationType);
-		fOutDumpBOOL(fOut, pZone->bAllowPVP, TAD_EOL); //end of line
+		fOutDumpCHAR(fOut, pZoneInfo->ShortName);
+		fOutDumpCHAR(fOut, pZoneInfo->LongName);
+		fOutDumpCHAR(fOut, pZoneInfo->WeatherType);
+		fOutDumpCHAR(fOut, pZoneInfo->WeatherTypeOverride);
+		fOutDumpCHAR(fOut, pZoneInfo->SkyType);
+		fOutDumpCHAR(fOut, pZoneInfo->SkyTypeOverride);
+		fOutDumpNUM(fOut, static_cast<uint32_t>(pZoneInfo->ZoneType));
+		fOutDumpNUM(fOut, pZoneInfo->ZoneID);
+		fOutDumpFLOAT(fOut, pZoneInfo->ZoneExpModifier);
+		fOutDumpNUM(fOut, pZoneInfo->GroupLvlExpRelated);
+		fOutDumpNUM(fOut, pZoneInfo->FilterID);
+		fOutDumpNUM(fOut, pZoneInfo->Unknown1);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogDensity);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogStart[0]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogStart[1]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogStart[2]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogStart[3]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogEnd[0]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogEnd[1]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogEnd[2]);
+		fOutDumpFLOAT(fOut, pZoneInfo->FogEnd[3]);
+		fOutDumpNUM(fOut, pZoneInfo->FogRed[0]);
+		fOutDumpNUM(fOut, pZoneInfo->FogRed[1]);
+		fOutDumpNUM(fOut, pZoneInfo->FogRed[2]);
+		fOutDumpNUM(fOut, pZoneInfo->FogRed[3]);
+		fOutDumpNUM(fOut, pZoneInfo->FogGreen[0]);
+		fOutDumpNUM(fOut, pZoneInfo->FogGreen[1]);
+		fOutDumpNUM(fOut, pZoneInfo->FogGreen[2]);
+		fOutDumpNUM(fOut, pZoneInfo->FogGreen[3]);
+		fOutDumpNUM(fOut, pZoneInfo->FogBlue[0]);
+		fOutDumpNUM(fOut, pZoneInfo->FogBlue[1]);
+		fOutDumpNUM(fOut, pZoneInfo->FogBlue[2]);
+		fOutDumpNUM(fOut, pZoneInfo->FogBlue[3]);
+		fOutDumpNUM(fOut, pZoneInfo->RainChance[0]);
+		fOutDumpNUM(fOut, pZoneInfo->RainChance[1]);
+		fOutDumpNUM(fOut, pZoneInfo->RainChance[2]);
+		fOutDumpNUM(fOut, pZoneInfo->RainChance[3]);
+		fOutDumpNUM(fOut, pZoneInfo->RainDuration[0]);
+		fOutDumpNUM(fOut, pZoneInfo->RainDuration[1]);
+		fOutDumpNUM(fOut, pZoneInfo->RainDuration[2]);
+		fOutDumpNUM(fOut, pZoneInfo->RainDuration[3]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowChance[0]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowChance[1]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowChance[2]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowChance[3]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowDuration[0]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowDuration[1]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowDuration[2]);
+		fOutDumpNUM(fOut, pZoneInfo->SnowDuration[3]);
+		fOutDumpNUM(fOut, pZoneInfo->PrecipitationType);
+		fOutDumpFLOAT(fOut, pZoneInfo->BloomIntensity);
+		fOutDumpFLOAT(fOut, pZoneInfo->ZoneGravity);
+		fOutDumpNUM(fOut, pZoneInfo->LavaDamage);
+		fOutDumpNUM(fOut, pZoneInfo->MinLavaDamage);
+		fOutDumpNUM(fOut, pZoneInfo->TimeStringID);
+		fOutDumpNUM(fOut, pZoneInfo->Unknown3);
+		fOutDumpNUM(fOut, pZoneInfo->SkyLock);
+		fOutDumpNUM(fOut, pZoneInfo->SkyLockOverride);
+		fOutDumpFLOAT(fOut, pZoneInfo->SafeYLoc);
+		fOutDumpFLOAT(fOut, pZoneInfo->SafeXLoc);
+		fOutDumpFLOAT(fOut, pZoneInfo->SafeZLoc);
+		fOutDumpFLOAT(fOut, pZoneInfo->SafeHeading);
+		fOutDumpFLOAT(fOut, pZoneInfo->Ceiling);
+		fOutDumpFLOAT(fOut, pZoneInfo->Floor);
+		fOutDumpFLOAT(fOut, pZoneInfo->MinClip);
+		fOutDumpFLOAT(fOut, pZoneInfo->MaxClip);
+		fOutDumpNUM(fOut, pZoneInfo->FallThroughWorldTeleportID);
+		fOutDumpNUM(fOut, pZoneInfo->Unknown4);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDHour);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDMinute);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDTick);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDOnPlayerDeath);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDOnNPCDeath);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDPlayerEnteringZone);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDOnZonePop);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDNPCLoot);
+		fOutDumpNUM(fOut, pZoneInfo->Unknown4b);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDOnFishing);
+		fOutDumpNUM(fOut, pZoneInfo->ScriptIDOnForage);
+		fOutDumpNUM(fOut, pZoneInfo->Unknown4c);
+		fOutDumpNUM(fOut, pZoneInfo->NPCAgroMaxDist);
+		fOutDumpNUM(fOut, pZoneInfo->ForageLow);
+		fOutDumpNUM(fOut, pZoneInfo->ForageMedium);
+		fOutDumpNUM(fOut, pZoneInfo->ForageHigh);
+		fOutDumpNUM(fOut, pZoneInfo->ForageSpecial);
+		fOutDumpNUM(fOut, pZoneInfo->FishingLow);
+		fOutDumpNUM(fOut, pZoneInfo->FishingMedium);
+		fOutDumpNUM(fOut, pZoneInfo->FishingHigh);
+		fOutDumpNUM(fOut, pZoneInfo->FishingRelated);
+		fOutDumpNUM(fOut, static_cast<uint8_t>(pZoneInfo->CanPlaceCampsite));
+		fOutDumpNUM(fOut, static_cast<uint8_t>(pZoneInfo->CanPlaceGuildBanner));
+		fOutDumpNUM(fOut, pZoneInfo->Unknown4d);
+		fOutDumpNUM(fOut, pZoneInfo->FastRegenHP);
+		fOutDumpNUM(fOut, pZoneInfo->FastRegenMana);
+		fOutDumpNUM(fOut, pZoneInfo->FastRegenEndurance);
+		fOutDumpBOOL(fOut, pZoneInfo->NewEngineZone);
+		fOutDumpBOOL(fOut, pZoneInfo->SkyEnabled);
+		fOutDumpBOOL(fOut, pZoneInfo->FogOnOff);
+		fOutDumpBOOL(fOut, pZoneInfo->ClimateType);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoPlayerLight);
+		fOutDumpBOOL(fOut, pZoneInfo->bUnknown5);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoAttack);
+		fOutDumpBOOL(fOut, pZoneInfo->bAllowPVP);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoEncumber);
+		fOutDumpBOOL(fOut, pZoneInfo->bUnknowns6[0]);
+		fOutDumpBOOL(fOut, pZoneInfo->bUnknowns6[1]);
+		fOutDumpBOOL(fOut, pZoneInfo->bUnknowns6[2]);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoLevitate);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoBuffExpiration);
+		fOutDumpBOOL(fOut, pZoneInfo->bDisallowManaStone);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoBind);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoCallOfTheHero);
+		fOutDumpBOOL(fOut, pZoneInfo->bUnknown8);
+		fOutDumpBOOL(fOut, pZoneInfo->bNoFear);
+		fOutDumpBOOL(fOut, pZoneInfo->bUnknown9, TAD_EOL); // end of line
 
 		//Struct Verification
 		// spot check a few data elements at the end
 		// of the struct to predict any alignment issues
-		if (pZone->FogDensity < 0 || pZone->FogDensity > 1)
+		if (pZoneInfo->FogDensity < 0 || pZoneInfo->FogDensity > 1)
 		{
 			alignmentError = true;
 		}
@@ -2066,22 +2100,24 @@ VOID dumpZonePoint()
 		fOutDumpCHAR(fOut, "UINT", TAD_EOL); //end of line
 
 		DWORD ZoneID = (DWORD)((PZONEINFO)pZoneInfo)->ZoneID;
-		for (unsigned int i = 0; i < tp_indexes; ++i)
+		DWORD tp_tablesize = *(DWORD*)Teleport_Table_Size;
+		tp_coords* tp = (tp_coords*)Teleport_Table;
+		for (unsigned int i = 0; i < tp_tablesize; ++i)
 		{
 			fOutDumpNUM(fOut, ZoneID); //not part of the EQ object but its needed in the zone points table
-			fOutDumpNUM(fOut, pTeleportTable[i].Index);
-			fOutDumpFLOAT(fOut, pTeleportTable[i].Y);
-			fOutDumpFLOAT(fOut, pTeleportTable[i].X);
-			fOutDumpFLOAT(fOut, pTeleportTable[i].Z);
-			fOutDumpFLOAT(fOut, pTeleportTable[i].Heading);
-			fOutDumpNUM(fOut, pTeleportTable[i].ZoneId);
-			fOutDumpNUM(fOut, pTeleportTable[i].FilterID);
-			fOutDumpNUM(fOut, pTeleportTable[i].VehicleID, TAD_EOL);
+			fOutDumpNUM(fOut, tp[i].Index);
+			fOutDumpFLOAT(fOut, tp[i].Y);
+			fOutDumpFLOAT(fOut, tp[i].X);
+			fOutDumpFLOAT(fOut, tp[i].Z);
+			fOutDumpFLOAT(fOut, tp[i].Heading);
+			fOutDumpNUM(fOut, tp[i].ZoneId);
+			fOutDumpNUM(fOut, tp[i].FilterID);
+			fOutDumpNUM(fOut, tp[i].VehicleID, TAD_EOL);
 
 			//Struct Verification
 			// spot check a few data elements at the end
 			// of the struct to predict any alignment issues
-			if (pTeleportTable[i].ZoneId < -1 || pTeleportTable[i].ZoneId > 10000)
+			if (tp[i].ZoneId < -1 || tp[i].ZoneId > 10000)
 			{
 				alignmentError = true;
 			}
@@ -2221,24 +2257,22 @@ VOID dumpTargetBegin()
 VOID dumpMerchantWin()
 {
 	CHAR szName[MAX_STRING] = { 0 };
-	CHAR szTemp[MAX_STRING] = { 0 };
 	FILE *fOut = NULL;
 	BOOL alignmentError = false;
 	UINT curID = 0;
 
-	if (!pMerchantWnd)
+	if (!pMerchantWnd || !pMerchantWnd->IsVisible())
 	{
 		WriteChatColor("\ao[MQ2TakeADump]\ax No merchant window open.", 10);
 		return;
 	}
-	CMerchantWnd *pMercWnd = (CMerchantWnd *)pMerchantWnd;
-	FLOAT mwMarkup = ((PEQMERCHWINDOW)pMerchantWnd)->Markup;
+
+	FLOAT mwMarkup = pMerchantWnd->MerchantGreed;
 
 	//get merchant name from the window itself
-	if (CLabel *nameLabel = (CLabel*)pMercWnd->GetChildItem("MW_MerchantName")) {
-		GetCXStr(nameLabel->CGetWindowText(), szTemp, MAX_STRING);
-	}
-	sprintf_s(szName, MAX_STRING, "MerchantWnd_%s", szTemp);
+	fmt::format_to(szName, "MerchantWnd_");
+	if (auto *nameLabel = pMerchantWnd->GetChildItem("MW_MerchantName"))
+		fmt::format_to(szName, "{}", nameLabel->GetWindowText());
 
 	//open the dump for output
 	if (fOpenDump(&fOut, szName))
@@ -2254,19 +2288,22 @@ VOID dumpMerchantWin()
 		fOutDumpCHAR(fOut, "FLOAT", TAD_EOL); //end of line
 
 		//loop through the items in the merchant window
-		for (int i = 0; i < pMercWnd->PageHandlers.Begin->pObject->ItemContainer.m_length; i++)
+		auto& page = pMerchantWnd->PageHandlers[RegularMerchantPage];
+		for (int i = 0; i < page->GetItemCount(); ++i)
 		{
-			curID = pMercWnd->PageHandlers.Begin->pObject->ItemContainer.m_array[i].pCont->ID;
-			fOutDumpNUM(fOut, curID);
-			fOutDumpCHAR(fOut, pMercWnd->PageHandlers.Begin->pObject->ItemContainer.m_array[i].pCont->Item2->Name);
-			fOutDumpFLOAT(fOut, mwMarkup, TAD_EOL);
-
-			//Struct Verification
-			// spot check a few data elements at the end
-			// of the struct to predict any alignment issues
-			if (curID < 1001 || curID > 200000)
+			ItemPtr ptr = page->GetItem(i);
+			if (ptr)
 			{
-				alignmentError = true;
+				curID = ptr->ID;
+				fOutDumpNUM(fOut, curID);
+				fOutDumpCHAR(fOut, ptr->GetName());
+				fOutDumpFLOAT(fOut, mwMarkup, TAD_EOL);
+
+				//Struct Verification
+				// spot check a few data elements at the end
+				// of the struct to predict any alignment issues
+				if (curID < 1001 || curID > 200000)
+					alignmentError = true;
 			}
 		}
 
@@ -2412,6 +2449,7 @@ public:
 		Milliseconds = 3,
 		MillisecondsReset = 4
 	};
+
 	MQ2TADType() :MQ2Type("TAD")
 	{
 		TypeMember(Seconds);
@@ -2419,9 +2457,11 @@ public:
 		TypeMember(Milliseconds);
 		TypeMember(MillisecondsReset);
 	}
-	bool GetMember(MQ2VARPTR VarPtr, PCHAR Member, PCHAR Index, MQ2TYPEVAR &Dest)
+
+	bool GetMember(MQVarPtr VarPtr, const char* Member, char* Index, MQTypeVar& Dest)
 	{
-		PMQ2TYPEMEMBER pMember = MQ2TADType::FindMember(Member);
+		using namespace datatypes;
+		MQTypeMember* pMember = MQ2TADType::FindMember(Member);
 		if (pMember) switch ((TADMembers)pMember->ID)
 		{
 		case Seconds:
@@ -2447,23 +2487,18 @@ public:
 		}
 		return FALSE;
 	}
-	bool ToString(MQ2VARPTR VarPtr, PCHAR Destination)
+
+	bool ToString(MQVarPtr VarPtr, char* Destination)
 	{
 		strcpy_s(Destination, MAX_STRING, "TRUE");
 		return true;
 	}
-	bool FromData(MQ2VARPTR &VarPtr, MQ2TYPEVAR &Source)
-	{
-		return false;
-	}
-	bool FromString(MQ2VARPTR &VarPtr, PCHAR Source)
-	{
-		return false;
-	}
+
 	~MQ2TADType() { }
 };
 
-BOOL dataTAD(PCHAR szName, MQ2TYPEVAR &Dest) {
+BOOL dataTAD(const char* zName, MQTypeVar& Dest)
+{
 	Dest.DWord = 1;
 	Dest.Type = pTADType;
 	return true;
