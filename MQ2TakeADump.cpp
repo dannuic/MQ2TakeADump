@@ -1365,9 +1365,9 @@ VOID dumpNPCType()
 			fOutDumpFLOAT(fOut, pSpawn->Length);
 			fOutDumpNUM(fOut, pSpawn->SpawnID);
 			fOutDumpNUM(fOut, pSpawn->PlayerState);
-			fOutDumpNUM(fOut, pSpawn->Vehicle->SpawnID);
-			fOutDumpNUM(fOut, pSpawn->Mount->SpawnID);
-			fOutDumpNUM(fOut, pSpawn->Rider->SpawnID);
+			fOutDumpNUM(fOut, pSpawn->Vehicle != nullptr ? pSpawn->Vehicle->SpawnID : 0U);
+			fOutDumpNUM(fOut, pSpawn->Mount != nullptr ? pSpawn->Mount->SpawnID : 0U);
+			fOutDumpNUM(fOut, pSpawn->Rider != nullptr ? pSpawn->Rider->SpawnID : 0U);
 			fOutDumpNUM(fOut, pSpawn->Unknown0x0164);
 			fOutDumpBOOL(fOut, pSpawn->Targetable);
 			fOutDumpBOOL(fOut, pSpawn->bTargetCyclable);
