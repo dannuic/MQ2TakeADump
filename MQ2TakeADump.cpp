@@ -1592,13 +1592,9 @@ VOID dumpNPCType()
 			fOutDumpNUM(fOut, pSpawn->SoundIDs[7]);
 			fOutDumpNUM(fOut, pSpawn->SoundIDs[8]);
 			fOutDumpNUM(fOut, pSpawn->SoundIDs[9]);
-			std::vector<unsigned int> twist;
-			twist.reserve(pSpawn->BardTwistSpells.size());
-			for (auto twist_it = pSpawn->BardTwistSpells.begin(); twist_it != pSpawn->BardTwistSpells.end(); ++twist_it)
-				twist.push_back(*twist_it);
-			fOutDumpCHAR(fOut, fmt::format("{}", fmt::join(twist, "|")).c_str());
-			fOutDumpNUM(fOut, pSpawn->CurrentBardTwistIndex);
-			fOutDumpNUM(fOut, pSpawn->CurrentBardTwistIndex2);
+			fOutDumpCHAR(fOut, ""); // the old bard members. Never really needed, but don't want to break the schema
+			fOutDumpNUM(fOut, 0);
+			fOutDumpNUM(fOut, 0);
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[0]);
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[1]);
 			fOutDumpNUM(fOut, pSpawn->SpawnStatus[2]);
